@@ -17,34 +17,6 @@ Export your **Figma variables, text styles, paint styles, and effect styles** di
 3. Click **Download CSS**.
 4. Use the generated stylesheet in your project.
 
-## 🔑 Example Output
-
-:root {
-  /* Variables */
-  --color-background-primary: #ffffff;
-  --spacing-medium: 8px;
-  --font-family-body: Inter, sans-serif;
-
-  /* Text styles */
-  .text-heading-1 {
-    font-family: var(--font-family-body);
-    font-size: 32px;
-    line-height: 40px;
-    font-weight: 700;
-  }
-
-  /* Paint styles */
-  .gradient-accent {
-    background: linear-gradient(90deg, #ff6a00, #ee0979);
-  }
-
-  /* Effect styles */
-  .shadow-card {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
-}
-
-
 ## ⚙️ Export Rules & Clarifications
 The exporter applies specific formatting rules when converting Figma tokens and styles to CSS:
 
@@ -67,17 +39,6 @@ The exporter applies specific formatting rules when converting Figma tokens and 
   - Blur effects are mapped to `filter: blur(...)`.
 - **Modes**
   - Multiple modes (e.g., Light / Dark) are exported as CSS variables inside `[data-theme="..."]` blocks.
-
-Example of modes:
-
-[data-theme="light"] {
-  --color-background-primary: #ffffff;
-}
-
-[data-theme="dark"] {
-  --color-background-primary: #000000;
-}
-
 
 ## 🛠 Development
 Install dependencies:
