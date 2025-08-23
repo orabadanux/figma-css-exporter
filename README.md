@@ -18,7 +18,7 @@ Export your **Figma variables, text styles, paint styles, and effect styles** di
 4. Use the generated stylesheet in your project.
 
 ## 🔑 Example Output
-```css
+
 :root {
   /* Variables */
   --color-background-primary: #ffffff;
@@ -43,6 +43,7 @@ Export your **Figma variables, text styles, paint styles, and effect styles** di
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
 }
+
 
 ## ⚙️ Export Rules & Clarifications
 The exporter applies specific formatting rules when converting Figma tokens and styles to CSS:
@@ -76,6 +77,7 @@ Example of modes:
 [data-theme="dark"] {
   --color-background-primary: #000000;
 }
+
 
 ## 🛠 Development
 Install dependencies:
