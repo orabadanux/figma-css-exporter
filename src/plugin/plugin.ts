@@ -5,12 +5,24 @@ figma.showUI(html, { width: 420, height: 640 });
 
 type VariableMode = { modeId: string; name: string };
 
-figma.on("run", () => {
-  // no-op
-});
+figma.on("run", () => { /* no-op */ });
 
 figma.ui.onmessage = async (msg: any) => {
   try {
+    // --- OPEN URL from UI ---
+    if (msg?.type === "open-url" && typeof msg.url === "string") {
+      try {
+        // Support older @figma/plugin-typings
+        (figma as any).openURL
+          ? (figma as any).openURL(msg.url)
+          : figma.ui.postMessage({ type: "open-url-fallback", url: msg.url });
+      } catch {
+        figma.ui.postMessage({ type: "open-url-fallback", url: msg.url });
+      }
+      return;
+    }
+
+    // --- Existing messages ---
     if (!msg || (msg.type !== "ui-ready" && msg.type !== "get-styles")) return;
     await sendStylesToUI();
   } catch (err) {
@@ -20,8 +32,6 @@ figma.ui.onmessage = async (msg: any) => {
 };
 
 async function sendStylesToUI() {
-  // Use async getters (required with documentAccess: "dynamic-page").
-  // Cast to any only to satisfy old typings; remove casts after upgrading @figma/plugin-typings.
   const [
     textStyles,
     paintStyles,
