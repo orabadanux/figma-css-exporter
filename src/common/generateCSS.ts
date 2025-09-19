@@ -48,6 +48,12 @@ function kebab(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function toCssVarName(name: string): string {
+  // Convert slash-separated names to valid CSS variable names
+  // e.g., "button/extraLarge/cornerRadius" -> "button-extraLarge-cornerRadius"
+  return name.replace(/\//g, "-");
+}
+
 function to1Smart(n: number): string {
   const r = Math.round(n * 10) / 10;
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
@@ -291,7 +297,7 @@ function emitVariablesSection(payload: Payload, opt: GenerateCSSOptions): string
           if (typeof val !== "undefined") { firstKey = k; firstVal = val; break; }
         }
         if (typeof firstVal === "undefined") continue;
-        const cssVar = `--${kebab(v.name)}`;
+        const cssVar = `--${toCssVarName(v.name)}`;
         const unit = v.resolvedType === "COLOR" || isWeightVarName(v.name) ? "none" : defaultUnit;
         const outVal = maybeResolveForString(firstVal, v.resolvedType, firstKey);
         rootLines.push(`  ${cssVar}: ${formatValue(outVal, v.resolvedType, unit, !!opt.preferTokenRefs, idToName)};`);
@@ -304,7 +310,7 @@ function emitVariablesSection(payload: Payload, opt: GenerateCSSOptions): string
         for (const v of varsOfColl) {
           const val = v.valuesByMode[m.modeId];
           if (typeof val === "undefined") continue;
-          const cssVar = `--${kebab(v.name)}`;
+          const cssVar = `--${toCssVarName(v.name)}`;
           const unit = v.resolvedType === "COLOR" || isWeightVarName(v.name) ? "none" : defaultUnit;
           const outVal = maybeResolveForString(val, v.resolvedType, m.modeId);
           modeLines.push(`  ${cssVar}: ${formatValue(outVal, v.resolvedType, unit, !!opt.preferTokenRefs, idToName)};`);
@@ -353,8 +359,12 @@ function emitTextStylesSection(payload: Payload, opt: GenerateCSSOptions): strin
   const blocks: string[] = [];
 
   for (const s of textStyles) {
-    const name = kebab(s.name ?? "text-style");
-    const cls = `.text-${name}`;
+    // Extract only the token part (after the slash) from the text style name
+    // e.g., "Headline/headline-100-bold" -> "headline-100-bold"
+    const fullName = s.name ?? "text-style";
+    const tokenName = fullName.includes('/') ? fullName.split('/')[1] : fullName;
+    const name = kebab(tokenName);
+    const cls = `.${name}`;
 
     // font-family (now forced to token when matched)
     const literalFamily = quoteFontFamily(s.fontFamily) ?? quoteFontFamily(s.fontName?.family);
@@ -450,7 +460,11 @@ function emitPaintStylesSection(payload: Payload, opt: GenerateCSSOptions): stri
 
   const lines: string[] = [];
   for (const p of paintStyles) {
-    const name = kebab(p.name ?? "paint");
+    // Extract only the token part (after the slash) from the paint style name
+    // e.g., "Gradient/gradient-primary-default-100" -> "gradient-primary-default-100"
+    const fullName = p.name ?? "paint";
+    const tokenName = fullName.includes('/') ? fullName.split('/')[1] : fullName;
+    const name = kebab(tokenName);
     const paint = firstVisible(p.paints);
     if (!paint) continue;
 
@@ -458,16 +472,16 @@ function emitPaintStylesSection(payload: Payload, opt: GenerateCSSOptions): stri
       const colorVal = isAlias(paint.color)
         ? `var(--${kebab(idToName.get(paint.color.id) ?? paint.color.id)})`
         : rgbaFromColor(paint.color);
-      lines.push(`  --paint-${name}: ${colorVal};`);
+      lines.push(`  --${name}: ${colorVal};`);
 
       if (typeof paint.opacity === "number" && paint.opacity !== 1) {
-        lines.push(`  --paint-${name}-opacity: ${to1Smart(paint.opacity)};`);
+        lines.push(`  --${name}-opacity: ${to1Smart(paint.opacity)};`);
       } else if (isAlias(paint.opacity)) {
-        lines.push(`  --paint-${name}-opacity: var(--${kebab(idToName.get(paint.opacity.id) ?? paint.opacity.id)});`);
+        lines.push(`  --${name}-opacity: var(--${kebab(idToName.get(paint.opacity.id) ?? paint.opacity.id)});`);
       }
     } else if (paint.type && paint.type.startsWith("GRADIENT")) {
       const grad = gradientToCss(paint.gradientStops ?? [], idToName, !!opt.preferTokenRefs);
-      lines.push(`  --gradient-${name}: ${grad};`);
+      lines.push(`  --${name}: ${grad};`);
     }
   }
 
@@ -488,7 +502,11 @@ function emitEffectStylesSection(payload: Payload, opt: GenerateCSSOptions): str
   const lines: string[] = [];
 
   for (const e of effectStyles) {
-    const name = kebab(e.name ?? "effect");
+    // Extract only the token part (after the slash) from the effect style name
+    // e.g., "Shadow/shadow-focus-100" -> "shadow-focus-100"
+    const fullName = e.name ?? "effect";
+    const tokenName = fullName.includes('/') ? fullName.split('/')[1] : fullName;
+    const name = kebab(tokenName);
     const eff = firstVisible(e.effects);
     if (!eff) continue;
 
@@ -499,13 +517,13 @@ function emitEffectStylesSection(payload: Payload, opt: GenerateCSSOptions): str
       const blur = isAlias(eff.radius)   ? `var(--${kebab(idToName.get(eff.radius.id)   ?? eff.radius.id)})`   : `${to1Smart(eff.radius ?? 0)}px`;
       const spread = isAlias(eff.spread) ? `var(--${kebab(idToName.get(eff.spread.id)   ?? eff.spread.id)})`   : `${to1Smart(eff.spread ?? 0)}px`;
       const color = isAlias(eff.color)   ? `var(--${kebab(idToName.get(eff.color.id)    ?? eff.color.id)})`    : rgbaFromColor(eff.color ?? { r: 0, g: 0, b: 0, a: 0.25 });
-      lines.push(`  --shadow-${name}: ${ox} ${oy} ${blur} ${spread} ${color}${inset};`);
+      lines.push(`  --${name}: ${ox} ${oy} ${blur} ${spread} ${color}${inset};`);
     } else if (eff.type === "LAYER_BLUR") {
       const blur = isAlias(eff.radius) ? `var(--${kebab(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
-      lines.push(`  --blur-${name}: ${blur};`);
+      lines.push(`  --${name}: ${blur};`);
     } else if (eff.type === "BACKGROUND_BLUR") {
       const blur = isAlias(eff.radius) ? `var(--${kebab(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
-      lines.push(`  --bg-blur-${name}: ${blur};`);
+      lines.push(`  --${name}: ${blur};`);
     }
   }
 
