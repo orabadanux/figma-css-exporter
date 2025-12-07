@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { generateCSS, GenerateCSSOptions } from "../common/generateCSS";
+import JSZip from "jszip";
+import { generateCSS, GenerateCSSOptions, GeneratedCSSFiles } from "../common/generateCSS";
 
 type Payload = any;
 
@@ -35,7 +36,7 @@ const KOFI = {
 };
 
 export default function App() {
-  const [cssOutput, setCssOutput] = useState("");
+  const [cssOutput, setCssOutput] = useState<GeneratedCSSFiles | null>(null);
   const [data, setData] = useState<Payload | null>(null);
 
   const [options, setOptions] = useState<GenerateCSSOptions>({
@@ -145,15 +146,55 @@ export default function App() {
   const toggleCollection = (id: string) =>
     setSelectedCollections((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  // Calculate number of files that will be generated
+  const filesCount = cssOutput
+    ? Object.keys(cssOutput.collections).length + (cssOutput.styles ? 1 : 0)
+    : 0;
+
   const [isHover, setIsHover] = useState(false);
   const [isActive, setIsActive] = useState(false);
 
-  const handleDownload = () => {
-    const blob = new Blob([cssOutput], { type: "text/css" });
-    const url = URL.createObjectURL(blob);
+  const handleDownload = async () => {
+    if (!cssOutput) return;
+
+    const files: Array<{ name: string; content: string }> = [];
+
+    // Add collection files
+    Object.entries(cssOutput.collections).forEach(([name, content]) => {
+      if (content) files.push({ name: `${name}.css`, content });
+    });
+
+    // Add styles file if it exists
+    if (cssOutput.styles) {
+      files.push({ name: "Styles.css", content: cssOutput.styles });
+    }
+
+    if (files.length === 0) return;
+
+    // If only one file, download directly without zip
+    if (files.length === 1) {
+      const blob = new Blob([files[0].content], { type: "text/css" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = files[0].name;
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    // Create a zip file with all CSS files
+    const zip = new JSZip();
+    files.forEach(({ name, content }) => {
+      zip.file(name, content);
+    });
+
+    // Generate the zip and download it
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(zipBlob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "tokens.css";
+    link.download = "design-tokens.zip";
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -315,7 +356,9 @@ export default function App() {
             }}
           >
             {cssOutput
-              ? "CSS is generated based on your selections."
+              ? filesCount > 1 
+                ? `${filesCount} CSS files will be downloaded as a ZIP.`
+                : "CSS file is generated based on your selections."
               : "Waiting for data… open a file with styles/variables."}
           </div>
         </div>

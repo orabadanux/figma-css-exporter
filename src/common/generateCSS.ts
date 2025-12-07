@@ -11,6 +11,11 @@ export type GenerateCSSOptions = {
   numberUnit?: string; // default "px"
 };
 
+export type GeneratedCSSFiles = {
+  collections: Record<string, string>; // <CollectionName>.css or <CollectionName>-<ModeName>.css
+  styles?: string; // Styles.css (paint, effect, text styles)
+};
+
 type VariableMode = { modeId: string; name: string };
 
 type Payload = {
@@ -221,7 +226,7 @@ function formatValue(
 ): string {
   if (isAlias(raw)) {
     const aliasName = idToName.get(raw.id);
-    return `var(--${kebab(aliasName ?? raw.id)})`;
+    return `var(--${toCssVarName(aliasName ?? raw.id)})`;
   }
   if ((resolvedType || "").toUpperCase() === "COLOR" && isObj(raw) &&
       typeof raw.r === "number" && typeof raw.g === "number" && typeof raw.b === "number") {
@@ -383,7 +388,7 @@ function emitTextStylesSection(payload: Payload, opt: GenerateCSSOptions): strin
 
     let fontWeight: string | undefined;
     if (isAlias(s.fontWeight)) {
-      fontWeight = `var(--${kebab(idToName.get((s.fontWeight as any).id) ?? (s.fontWeight as any).id)})`;
+      fontWeight = `var(--${toCssVarName(idToName.get((s.fontWeight as any).id) ?? (s.fontWeight as any).id)})`;
     } else if (typeof weightLabel === "string") {
       const key = normalizeWeightKey(weightLabel);
       const tokenVar = weightVars.get(key);
@@ -397,15 +402,15 @@ function emitTextStylesSection(payload: Payload, opt: GenerateCSSOptions): strin
     }
 
     const fontSize = isAlias(s.fontSize)
-      ? `var(--${kebab(idToName.get((s.fontSize as any).id) ?? (s.fontSize as any).id)})`
+      ? `var(--${toCssVarName(idToName.get((s.fontSize as any).id) ?? (s.fontSize as any).id)})`
       : typeof s.fontSize === "number" ? `${to1Smart(s.fontSize)}px` : undefined;
 
     const lineHeight = isAlias(s.lineHeight)
-      ? `var(--${kebab(idToName.get((s.lineHeight as any).id) ?? (s.lineHeight as any).id)})`
+      ? `var(--${toCssVarName(idToName.get((s.lineHeight as any).id) ?? (s.lineHeight as any).id)})`
       : lineHeightToCss(s.lineHeight);
 
     const letterSpacing = isAlias(s.letterSpacing)
-      ? `var(--${kebab(idToName.get((s.letterSpacing as any).id) ?? (s.letterSpacing as any).id)})`
+      ? `var(--${toCssVarName(idToName.get((s.letterSpacing as any).id) ?? (s.letterSpacing as any).id)})`
       : letterSpacingToCss(s.letterSpacing);
 
     const textTransform = s.textCase ? String(s.textCase).toLowerCase() : undefined;
@@ -442,7 +447,7 @@ function firstVisible(arr: any[] | undefined): any | undefined {
 function gradientToCss(stops: any[], idToName: Map<string,string>, preferTokenRefs: boolean): string {
   const parts = (stops ?? []).map(s => {
     const col = isAlias(s.color)
-      ? `var(--${kebab(idToName.get(s.color.id) ?? s.color.id)})`
+      ? `var(--${toCssVarName(idToName.get(s.color.id) ?? s.color.id)})`
       : rgbaFromColor(s.color);
     const pos = typeof s.position === "number" ? `${to1Smart(s.position * 100)}%` : undefined;
     return pos ? `${col} ${pos}` : col;
@@ -470,14 +475,14 @@ function emitPaintStylesSection(payload: Payload, opt: GenerateCSSOptions): stri
 
     if (paint.type === "SOLID") {
       const colorVal = isAlias(paint.color)
-        ? `var(--${kebab(idToName.get(paint.color.id) ?? paint.color.id)})`
+        ? `var(--${toCssVarName(idToName.get(paint.color.id) ?? paint.color.id)})`
         : rgbaFromColor(paint.color);
       lines.push(`  --${name}: ${colorVal};`);
 
       if (typeof paint.opacity === "number" && paint.opacity !== 1) {
         lines.push(`  --${name}-opacity: ${to1Smart(paint.opacity)};`);
       } else if (isAlias(paint.opacity)) {
-        lines.push(`  --${name}-opacity: var(--${kebab(idToName.get(paint.opacity.id) ?? paint.opacity.id)});`);
+        lines.push(`  --${name}-opacity: var(--${toCssVarName(idToName.get(paint.opacity.id) ?? paint.opacity.id)});`);
       }
     } else if (paint.type && paint.type.startsWith("GRADIENT")) {
       const grad = gradientToCss(paint.gradientStops ?? [], idToName, !!opt.preferTokenRefs);
@@ -512,17 +517,17 @@ function emitEffectStylesSection(payload: Payload, opt: GenerateCSSOptions): str
 
     if (eff.type === "DROP_SHADOW" || eff.type === "INNER_SHADOW") {
       const inset = eff.type === "INNER_SHADOW" ? " inset" : "";
-      const ox = isAlias(eff.offset?.x) ? `var(--${kebab(idToName.get(eff.offset.x.id) ?? eff.offset.x.id)})` : `${to1Smart(eff.offset?.x ?? 0)}px`;
-      const oy = isAlias(eff.offset?.y) ? `var(--${kebab(idToName.get(eff.offset.y.id) ?? eff.offset.y.id)})` : `${to1Smart(eff.offset?.y ?? 0)}px`;
-      const blur = isAlias(eff.radius)   ? `var(--${kebab(idToName.get(eff.radius.id)   ?? eff.radius.id)})`   : `${to1Smart(eff.radius ?? 0)}px`;
-      const spread = isAlias(eff.spread) ? `var(--${kebab(idToName.get(eff.spread.id)   ?? eff.spread.id)})`   : `${to1Smart(eff.spread ?? 0)}px`;
-      const color = isAlias(eff.color)   ? `var(--${kebab(idToName.get(eff.color.id)    ?? eff.color.id)})`    : rgbaFromColor(eff.color ?? { r: 0, g: 0, b: 0, a: 0.25 });
+      const ox = isAlias(eff.offset?.x) ? `var(--${toCssVarName(idToName.get(eff.offset.x.id) ?? eff.offset.x.id)})` : `${to1Smart(eff.offset?.x ?? 0)}px`;
+      const oy = isAlias(eff.offset?.y) ? `var(--${toCssVarName(idToName.get(eff.offset.y.id) ?? eff.offset.y.id)})` : `${to1Smart(eff.offset?.y ?? 0)}px`;
+      const blur = isAlias(eff.radius)   ? `var(--${toCssVarName(idToName.get(eff.radius.id)   ?? eff.radius.id)})`   : `${to1Smart(eff.radius ?? 0)}px`;
+      const spread = isAlias(eff.spread) ? `var(--${toCssVarName(idToName.get(eff.spread.id)   ?? eff.spread.id)})`   : `${to1Smart(eff.spread ?? 0)}px`;
+      const color = isAlias(eff.color)   ? `var(--${toCssVarName(idToName.get(eff.color.id)    ?? eff.color.id)})`    : rgbaFromColor(eff.color ?? { r: 0, g: 0, b: 0, a: 0.25 });
       lines.push(`  --${name}: ${ox} ${oy} ${blur} ${spread} ${color}${inset};`);
     } else if (eff.type === "LAYER_BLUR") {
-      const blur = isAlias(eff.radius) ? `var(--${kebab(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
+      const blur = isAlias(eff.radius) ? `var(--${toCssVarName(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
       lines.push(`  --${name}: ${blur};`);
     } else if (eff.type === "BACKGROUND_BLUR") {
-      const blur = isAlias(eff.radius) ? `var(--${kebab(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
+      const blur = isAlias(eff.radius) ? `var(--${toCssVarName(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
       lines.push(`  --${name}: ${blur};`);
     }
   }
@@ -533,7 +538,12 @@ function emitEffectStylesSection(payload: Payload, opt: GenerateCSSOptions): str
 
 /* ============================= public API ============================= */
 
-export function generateCSS(payload: Payload, options: GenerateCSSOptions): string {
+function appendHeader(content: string): string {
+  if (!content) return "";
+  return `/* Auto-generated design tokens */\n/* ${new Date().toISOString()} */\n\n${content}`.replace(/\n{3,}/g, "\n\n");
+}
+
+export function generateCSS(payload: Payload, options: GenerateCSSOptions): GeneratedCSSFiles {
   const opt: GenerateCSSOptions = {
     includeTextStyles: true,
     includePaintStyles: true,
@@ -544,13 +554,97 @@ export function generateCSS(payload: Payload, options: GenerateCSSOptions): stri
     numberUnit: options.numberUnit ?? "px",
   };
 
+  const result: GeneratedCSSFiles = {
+    collections: {},
+  };
+
+  const { variables = [], collections = [], variableModes = [] } = payload;
+
+  if (opt.includeVariables && collections.length > 0) {
+    const allowedSet = opt.selectedCollectionIds?.length ? new Set(opt.selectedCollectionIds) : null;
+
+    // Process each collection
+    for (const coll of collections) {
+      // Check if this collection is allowed based on selection
+      if (allowedSet && !allowedSet.has(coll.id)) continue;
+
+      const collName = coll.name;
+      const collVariables = variables.filter((v) => v.variableCollectionId === coll.id);
+
+      if (collVariables.length === 0) continue;
+
+      // Check if collection has modes
+      const modes = coll.modes && coll.modes.length > 1 ? coll.modes : null;
+
+      if (modes) {
+        // Create a file for each mode: <CollectionName>-<ModeName>.css
+        for (const mode of modes) {
+          const modeContent = emitVariablesSection(
+            { ...payload, variables: collVariables, collections: [coll], variableModes: [mode] },
+            opt
+          );
+
+          if (modeContent) {
+            const fileName = `${collName}-${mode.name}`;
+            result.collections[fileName] = appendHeader(modeContent);
+          }
+        }
+      } else {
+        // Single mode or no modes: <CollectionName>.css
+        const collContent = emitVariablesSection(
+          { ...payload, variables: collVariables, collections: [coll] },
+          opt
+        );
+
+        if (collContent) {
+          result.collections[collName] = appendHeader(collContent);
+        }
+      }
+    }
+  }
+
+  // Handle styles (paint, effect, text styles) - all together in one Styles.css file
+  const styleParts: string[] = [];
+
+  if (opt.includePaintStyles) {
+    const paintContent = emitPaintStylesSection(payload, opt);
+    if (paintContent) styleParts.push(paintContent);
+  }
+
+  if (opt.includeEffectStyles) {
+    const effectContent = emitEffectStylesSection(payload, opt);
+    if (effectContent) styleParts.push(effectContent);
+  }
+
+  if (opt.includeTextStyles) {
+    const textStyleContent = emitTextStylesSection(payload, opt);
+    if (textStyleContent) styleParts.push(textStyleContent);
+  }
+
+  if (styleParts.length > 0) {
+    const stylesContent = styleParts.join("\n\n");
+    result.styles = appendHeader(stylesContent);
+  }
+
+  return result;
+}
+
+// Legacy function for backward compatibility
+export function generateCSSLegacy(payload: Payload, options: GenerateCSSOptions): string {
+  const files = generateCSS(payload, options);
   const parts: string[] = [];
+
   parts.push(`/* Auto-generated design tokens */`, `/* ${new Date().toISOString()} */`, "");
 
-  parts.push(emitVariablesSection(payload, opt));
-  parts.push(emitTextStylesSection(payload, opt));
-  parts.push(emitPaintStylesSection(payload, opt));
-  parts.push(emitEffectStylesSection(payload, opt));
+  // Add all collection files
+  Object.values(files.collections).forEach((content) => {
+    if (content) parts.push(content);
+  });
+
+  // Add styles file
+  if (files.styles) {
+    parts.push(files.styles);
+  }
 
   return parts.join("\n").replace(/\n{3,}/g, "\n\n");
 }
