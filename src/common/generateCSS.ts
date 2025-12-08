@@ -54,9 +54,20 @@ function kebab(name: string): string {
 }
 
 function toCssVarName(name: string): string {
-  // Convert slash-separated names to valid CSS variable names
-  // e.g., "button/extraLarge/cornerRadius" -> "button-extraLarge-cornerRadius"
-  return name.replace(/\//g, "-");
+  // Convert names to safe CSS variable names:
+  // - Replace slashes/spaces/other non-alphanumeric chars with hyphens
+  // - Collapse multiple hyphens
+  // - Lowercase the result and trim hyphens
+  // Examples:
+  // "button/extraLarge/cornerRadius" -> "button-extralarge-cornerradius"
+  // "VariableID:2702:7787" -> "variableid-2702-7787"
+  if (!name) return "";
+  return name
+    .replace(/[\/\s]+/g, "-")
+    // replace any characters that are not letters (keep case), digits, underscore or hyphen
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/--+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function to1Smart(n: number): string {
@@ -579,9 +590,14 @@ export function generateCSS(payload: Payload, options: GenerateCSSOptions): Gene
       if (modes) {
         // Create a file for each mode: <CollectionName>-<ModeName>.css
         for (const mode of modes) {
+          // Use the full variable list so alias lookups can resolve names from other collections,
+          // but restrict emitted output to this collection by setting selectedCollectionIds on a cloned options object
+          const optForColl = { ...opt, selectedCollectionIds: [coll.id] };
+          // Ensure the collection passed to the emitter only contains this single mode
+          const collForMode = { ...coll, modes: [mode] };
           const modeContent = emitVariablesSection(
-            { ...payload, variables: collVariables, collections: [coll], variableModes: [mode] },
-            opt
+            { ...payload, collections: [collForMode], variableModes: [mode] },
+            optForColl
           );
 
           if (modeContent) {
@@ -591,9 +607,10 @@ export function generateCSS(payload: Payload, options: GenerateCSSOptions): Gene
         }
       } else {
         // Single mode or no modes: <CollectionName>.css
+        const optForColl = { ...opt, selectedCollectionIds: [coll.id] };
         const collContent = emitVariablesSection(
-          { ...payload, variables: collVariables, collections: [coll] },
-          opt
+          { ...payload, collections: [coll] },
+          optForColl
         );
 
         if (collContent) {
