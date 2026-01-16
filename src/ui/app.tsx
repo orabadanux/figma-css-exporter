@@ -166,7 +166,7 @@ export default function App() {
 
     // Add styles file if it exists
     if (cssOutput.styles) {
-      files.push({ name: "Styles.css", content: cssOutput.styles });
+      files.push({ name: "style-tokens.css", content: cssOutput.styles });
     }
 
     if (files.length === 0) return;
