@@ -76,14 +76,45 @@ async function sendStylesToUI() {
         paragraphSpacing: s.paragraphSpacing,
         textCase: s.textCase,
         textDecoration: s.textDecoration,
+        // Include variable bindings so CSS generation can emit var() refs
+        boundVariables: (s as any).boundVariables,
       })),
       paintStyles: paintStyles.map((s: PaintStyle) => ({
         name: s.name,
-        paints: s.paints,
+        // Explicitly serialize each paint to ensure boundVariables survives postMessage
+        paints: Array.from(s.paints).map((p: any) => {
+          const paint: Record<string, any> = {
+            type: p.type,
+            visible: p.visible,
+            opacity: p.opacity,
+            blendMode: p.blendMode,
+            color: p.color,
+            boundVariables: p.boundVariables,
+          };
+          if (p.gradientStops) {
+            paint.gradientStops = Array.from(p.gradientStops).map((gs: any) => ({
+              position: gs.position,
+              color: gs.color,
+              boundVariables: gs.boundVariables,
+            }));
+          }
+          if (p.gradientTransform) paint.gradientTransform = p.gradientTransform;
+          return paint;
+        }),
       })),
       effectStyles: effectStyles.map((s: EffectStyle) => ({
         name: s.name,
-        effects: s.effects,
+        // Explicitly serialize each effect to ensure boundVariables survives postMessage
+        effects: Array.from(s.effects).map((e: any) => ({
+          type: e.type,
+          visible: e.visible,
+          radius: e.radius,
+          color: e.color,
+          offset: e.offset,
+          spread: e.spread,
+          blendMode: e.blendMode,
+          boundVariables: e.boundVariables,
+        })),
       })),
       variables: varsForUi,
       collections: collectionsForUi,

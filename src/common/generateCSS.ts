@@ -287,6 +287,9 @@ function emitVariablesSection(payload: Payload, opt: GenerateCSSOptions): string
   };
 
   const maybeResolveForString = (val: any, resolvedType: string, modeId?: string) => {
+    // When preferTokenRefs is enabled, keep alias references intact so
+    // formatValue can emit var(--token-name) instead of the resolved literal.
+    if (opt.preferTokenRefs) return val;
     const t = (resolvedType || "").toUpperCase();
     const isStringish = t === "STRING" || (!NUMBER_LIKE_TYPES.has(t) && t !== "COLOR");
     if (isStringish && isAlias(val)) {
@@ -306,16 +309,25 @@ function emitVariablesSection(payload: Payload, opt: GenerateCSSOptions): string
 
     if (!modes || modes.length <= 1) {
       const rootLines: string[] = [];
+      // When a specific mode is provided (modes[0]), use its modeId to look up
+      // the correct column from valuesByMode; otherwise fall back to the first
+      // available entry.
+      const targetModeId = modes?.[0]?.modeId;
       for (const v of varsOfColl) {
-        let firstKey: string | undefined;
-        let firstVal: any | undefined;
-        for (const [k, val] of Object.entries(v.valuesByMode ?? {})) {
-          if (typeof val !== "undefined") { firstKey = k; firstVal = val; break; }
+        let modeKey: string | undefined;
+        let modeVal: any | undefined;
+        if (targetModeId && typeof v.valuesByMode?.[targetModeId] !== "undefined") {
+          modeKey = targetModeId;
+          modeVal = v.valuesByMode[targetModeId];
+        } else {
+          for (const [k, val] of Object.entries(v.valuesByMode ?? {})) {
+            if (typeof val !== "undefined") { modeKey = k; modeVal = val; break; }
+          }
         }
-        if (typeof firstVal === "undefined") continue;
+        if (typeof modeVal === "undefined") continue;
         const cssVar = `--${toCssVarName(v.name)}`;
         const unit = v.resolvedType === "COLOR" || isWeightVarName(v.name) ? "none" : defaultUnit;
-        const outVal = maybeResolveForString(firstVal, v.resolvedType, firstKey);
+        const outVal = maybeResolveForString(modeVal, v.resolvedType, modeKey);
         rootLines.push(`  ${cssVar}: ${formatValue(outVal, v.resolvedType, unit, !!opt.preferTokenRefs, idToName)};`);
       }
       if (rootLines.length) section.push(`/* ${coll?.name ?? "Variables"} */`, `:root {`, ...rootLines, `}`, "");
@@ -382,23 +394,30 @@ function emitTextStylesSection(payload: Payload, opt: GenerateCSSOptions): strin
     const name = kebab(tokenName);
     const cls = `.${name}`;
 
-    // font-family (now forced to token when matched)
+    // boundVariables from Figma style bindings (properties bound to variables)
+    const bv: Record<string, any> = s.boundVariables || {};
+
+    // font-family: prefer boundVariable, then heuristic var match, then literal
     const literalFamily = quoteFontFamily(s.fontFamily) ?? quoteFontFamily(s.fontName?.family);
     const norm = normalizeFamilyName(literalFamily);
 
     let fontFamilyDecl: string | undefined;
-    if (norm && familyToVar.has(norm)) {
+    if (isAlias(bv.fontFamily)) {
+      fontFamilyDecl = `  font-family: var(--${toCssVarName(idToName.get(bv.fontFamily.id) ?? bv.fontFamily.id)});`;
+    } else if (norm && familyToVar.has(norm)) {
       fontFamilyDecl = `  font-family: var(${familyToVar.get(norm)});`;
     } else if (literalFamily) {
       fontFamilyDecl = `  font-family: ${literalFamily};`;
     }
 
-    // font-weight
+    // font-weight: prefer boundVariable, then alias on value, then heuristic, then literal
     let weightLabel: string | undefined =
       typeof s.fontWeight === "string" ? s.fontWeight : (s.fontName?.style as string | undefined);
 
     let fontWeight: string | undefined;
-    if (isAlias(s.fontWeight)) {
+    if (isAlias(bv.fontWeight)) {
+      fontWeight = `var(--${toCssVarName(idToName.get(bv.fontWeight.id) ?? bv.fontWeight.id)})`;
+    } else if (isAlias(s.fontWeight)) {
       fontWeight = `var(--${toCssVarName(idToName.get((s.fontWeight as any).id) ?? (s.fontWeight as any).id)})`;
     } else if (typeof weightLabel === "string") {
       const key = normalizeWeightKey(weightLabel);
@@ -412,17 +431,26 @@ function emitTextStylesSection(payload: Payload, opt: GenerateCSSOptions): strin
       fontWeight = String(s.fontWeight);
     }
 
-    const fontSize = isAlias(s.fontSize)
-      ? `var(--${toCssVarName(idToName.get((s.fontSize as any).id) ?? (s.fontSize as any).id)})`
-      : typeof s.fontSize === "number" ? `${to1Smart(s.fontSize)}px` : undefined;
+    // font-size: prefer boundVariable, then alias on value, then literal
+    const fontSize = isAlias(bv.fontSize)
+      ? `var(--${toCssVarName(idToName.get(bv.fontSize.id) ?? bv.fontSize.id)})`
+      : isAlias(s.fontSize)
+        ? `var(--${toCssVarName(idToName.get((s.fontSize as any).id) ?? (s.fontSize as any).id)})`
+        : typeof s.fontSize === "number" ? `${to1Smart(s.fontSize)}px` : undefined;
 
-    const lineHeight = isAlias(s.lineHeight)
-      ? `var(--${toCssVarName(idToName.get((s.lineHeight as any).id) ?? (s.lineHeight as any).id)})`
-      : lineHeightToCss(s.lineHeight);
+    // line-height: prefer boundVariable, then alias on value, then literal
+    const lineHeight = isAlias(bv.lineHeight)
+      ? `var(--${toCssVarName(idToName.get(bv.lineHeight.id) ?? bv.lineHeight.id)})`
+      : isAlias(s.lineHeight)
+        ? `var(--${toCssVarName(idToName.get((s.lineHeight as any).id) ?? (s.lineHeight as any).id)})`
+        : lineHeightToCss(s.lineHeight);
 
-    const letterSpacing = isAlias(s.letterSpacing)
-      ? `var(--${toCssVarName(idToName.get((s.letterSpacing as any).id) ?? (s.letterSpacing as any).id)})`
-      : letterSpacingToCss(s.letterSpacing);
+    // letter-spacing: prefer boundVariable, then alias on value, then literal
+    const letterSpacing = isAlias(bv.letterSpacing)
+      ? `var(--${toCssVarName(idToName.get(bv.letterSpacing.id) ?? bv.letterSpacing.id)})`
+      : isAlias(s.letterSpacing)
+        ? `var(--${toCssVarName(idToName.get((s.letterSpacing as any).id) ?? (s.letterSpacing as any).id)})`
+        : letterSpacingToCss(s.letterSpacing);
 
     const textTransform = s.textCase ? String(s.textCase).toLowerCase() : undefined;
     const textDecoration = s.textDecoration ? String(s.textDecoration).toLowerCase() : undefined;
@@ -457,9 +485,13 @@ function firstVisible(arr: any[] | undefined): any | undefined {
 }
 function gradientToCss(stops: any[], idToName: Map<string,string>, preferTokenRefs: boolean): string {
   const parts = (stops ?? []).map(s => {
-    const col = isAlias(s.color)
-      ? `var(--${toCssVarName(idToName.get(s.color.id) ?? s.color.id)})`
-      : rgbaFromColor(s.color);
+    // Check boundVariables first (Figma stores variable bindings here, not on .color directly)
+    const bvColor = s.boundVariables?.color;
+    const col = isAlias(bvColor)
+      ? `var(--${toCssVarName(idToName.get(bvColor.id) ?? bvColor.id)})`
+      : isAlias(s.color)
+        ? `var(--${toCssVarName(idToName.get(s.color.id) ?? s.color.id)})`
+        : rgbaFromColor(s.color);
     const pos = typeof s.position === "number" ? `${to1Smart(s.position * 100)}%` : undefined;
     return pos ? `${col} ${pos}` : col;
   });
@@ -485,12 +517,18 @@ function emitPaintStylesSection(payload: Payload, opt: GenerateCSSOptions): stri
     if (!paint) continue;
 
     if (paint.type === "SOLID") {
-      const colorVal = isAlias(paint.color)
-        ? `var(--${toCssVarName(idToName.get(paint.color.id) ?? paint.color.id)})`
-        : rgbaFromColor(paint.color);
+      // Check boundVariables first (Figma stores variable bindings here)
+      const pbv = paint.boundVariables || {};
+      const colorVal = isAlias(pbv.color)
+        ? `var(--${toCssVarName(idToName.get(pbv.color.id) ?? pbv.color.id)})`
+        : isAlias(paint.color)
+          ? `var(--${toCssVarName(idToName.get(paint.color.id) ?? paint.color.id)})`
+          : rgbaFromColor(paint.color);
       lines.push(`  --${name}: ${colorVal};`);
 
-      if (typeof paint.opacity === "number" && paint.opacity !== 1) {
+      if (isAlias(pbv.opacity)) {
+        lines.push(`  --${name}-opacity: var(--${toCssVarName(idToName.get(pbv.opacity.id) ?? pbv.opacity.id)});`);
+      } else if (typeof paint.opacity === "number" && paint.opacity !== 1) {
         lines.push(`  --${name}-opacity: ${to1Smart(paint.opacity)};`);
       } else if (isAlias(paint.opacity)) {
         lines.push(`  --${name}-opacity: var(--${toCssVarName(idToName.get(paint.opacity.id) ?? paint.opacity.id)});`);
@@ -527,18 +565,22 @@ function emitEffectStylesSection(payload: Payload, opt: GenerateCSSOptions): str
     if (!eff) continue;
 
     if (eff.type === "DROP_SHADOW" || eff.type === "INNER_SHADOW") {
+      // Check boundVariables first (Figma stores variable bindings here)
+      const ebv = eff.boundVariables || {};
       const inset = eff.type === "INNER_SHADOW" ? " inset" : "";
-      const ox = isAlias(eff.offset?.x) ? `var(--${toCssVarName(idToName.get(eff.offset.x.id) ?? eff.offset.x.id)})` : `${to1Smart(eff.offset?.x ?? 0)}px`;
-      const oy = isAlias(eff.offset?.y) ? `var(--${toCssVarName(idToName.get(eff.offset.y.id) ?? eff.offset.y.id)})` : `${to1Smart(eff.offset?.y ?? 0)}px`;
-      const blur = isAlias(eff.radius)   ? `var(--${toCssVarName(idToName.get(eff.radius.id)   ?? eff.radius.id)})`   : `${to1Smart(eff.radius ?? 0)}px`;
-      const spread = isAlias(eff.spread) ? `var(--${toCssVarName(idToName.get(eff.spread.id)   ?? eff.spread.id)})`   : `${to1Smart(eff.spread ?? 0)}px`;
-      const color = isAlias(eff.color)   ? `var(--${toCssVarName(idToName.get(eff.color.id)    ?? eff.color.id)})`    : rgbaFromColor(eff.color ?? { r: 0, g: 0, b: 0, a: 0.25 });
+      const ox = isAlias(ebv.offsetX)  ? `var(--${toCssVarName(idToName.get(ebv.offsetX.id) ?? ebv.offsetX.id)})` : isAlias(eff.offset?.x) ? `var(--${toCssVarName(idToName.get(eff.offset.x.id) ?? eff.offset.x.id)})` : `${to1Smart(eff.offset?.x ?? 0)}px`;
+      const oy = isAlias(ebv.offsetY)  ? `var(--${toCssVarName(idToName.get(ebv.offsetY.id) ?? ebv.offsetY.id)})` : isAlias(eff.offset?.y) ? `var(--${toCssVarName(idToName.get(eff.offset.y.id) ?? eff.offset.y.id)})` : `${to1Smart(eff.offset?.y ?? 0)}px`;
+      const blur = isAlias(ebv.radius) ? `var(--${toCssVarName(idToName.get(ebv.radius.id)  ?? ebv.radius.id)})`  : isAlias(eff.radius)   ? `var(--${toCssVarName(idToName.get(eff.radius.id)   ?? eff.radius.id)})`   : `${to1Smart(eff.radius ?? 0)}px`;
+      const spread = isAlias(ebv.spread) ? `var(--${toCssVarName(idToName.get(ebv.spread.id) ?? ebv.spread.id)})` : isAlias(eff.spread) ? `var(--${toCssVarName(idToName.get(eff.spread.id)   ?? eff.spread.id)})`   : `${to1Smart(eff.spread ?? 0)}px`;
+      const color = isAlias(ebv.color) ? `var(--${toCssVarName(idToName.get(ebv.color.id)   ?? ebv.color.id)})`   : isAlias(eff.color)   ? `var(--${toCssVarName(idToName.get(eff.color.id)    ?? eff.color.id)})`    : rgbaFromColor(eff.color ?? { r: 0, g: 0, b: 0, a: 0.25 });
       lines.push(`  --${name}: ${ox} ${oy} ${blur} ${spread} ${color}${inset};`);
     } else if (eff.type === "LAYER_BLUR") {
-      const blur = isAlias(eff.radius) ? `var(--${toCssVarName(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
+      const ebv = eff.boundVariables || {};
+      const blur = isAlias(ebv.radius) ? `var(--${toCssVarName(idToName.get(ebv.radius.id) ?? ebv.radius.id)})` : isAlias(eff.radius) ? `var(--${toCssVarName(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
       lines.push(`  --${name}: ${blur};`);
     } else if (eff.type === "BACKGROUND_BLUR") {
-      const blur = isAlias(eff.radius) ? `var(--${toCssVarName(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
+      const ebv = eff.boundVariables || {};
+      const blur = isAlias(ebv.radius) ? `var(--${toCssVarName(idToName.get(ebv.radius.id) ?? ebv.radius.id)})` : isAlias(eff.radius) ? `var(--${toCssVarName(idToName.get(eff.radius.id) ?? eff.radius.id)})` : `${to1Smart(eff.radius ?? 0)}px`;
       lines.push(`  --${name}: ${blur};`);
     }
   }
